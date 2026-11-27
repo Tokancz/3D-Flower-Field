@@ -2,12 +2,52 @@
 <html lang="cs">
   <head>
     <meta charset="UTF-8">
-    <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Oasis</title>
+
+    <!-- ── Základ SEO: titulek (≤ 60 znaků) a popis (≤ 160 znaků) → to Google ukáže ve výsledcích ── -->
+    <title>Flower Oasis – interaktivní 3D zahrádka</title>
+    <meta name="description" content="Klidná interaktivní 3D zahrádka v prohlížeči. Prohrab kytky kurzorem, sleduj včelky při opylování a pusť si ambientní hudbu.">
+
+    <!-- Hlavní adresa stránky (kdyby web byl dostupný i z jiných URL) -->
+    <link rel="canonical" href="https://tokancz.github.io/3D-Flower-Field/">
+
+    <!-- Barva lišty prohlížeče na mobilu (= barva pozadí scény) -->
+    <meta name="theme-color" content="#EEFAFF">
+
+    <!-- ── Ikony ── Vite při buildu sám doplní /3D-Flower-Field/ na začátek cest -->
+    <link rel="icon" href="/favicon/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" href="/favicon/apple-touch-icon.png">
+    <link rel="manifest" href="/favicon/site.webmanifest">
+
+    <!-- ── Open Graph: náhled při sdílení odkazu (Facebook, Messenger, Discord, LinkedIn…) ──
+         og:image musí být ABSOLUTNÍ URL a ideálně 1200 × 630 px -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://tokancz.github.io/3D-Flower-Field/">
+    <meta property="og:title" content="Flower Oasis – interaktivní 3D zahrádka">
+    <meta property="og:description" content="Prohrab kytky kurzorem, sleduj včelky a odpočiň si u ambientní hudby.">
+    <meta property="og:image" content="https://tokancz.github.io/3D-Flower-Field/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Kopeček posetý modrými kytkami, nad kterými létají včelky">
+    <meta property="og:locale" content="cs_CZ">
+
+    <!-- Twitter / X: velký náhled s obrázkem (zbytek si vezme z og:*) -->
+    <meta name="twitter:card" content="summary_large_image">
+
+    <!-- Font načíst hned, ne až když ho CSS najde → nadpis neproblikne systémovým písmem -->
+    <link rel="preload" href="/fonts/Monument_Valley_1.2-Regular.otf" as="font" type="font/otf" crossorigin>
   </head>
   <body>
     <div id="app"></div>
+
+    <!-- Pro lidi (a roboty) bez JavaScriptu: aspoň vědí, co tu je -->
+    <noscript>
+      <h1>Flower Oasis</h1>
+      <p>Interaktivní 3D zahrádka. Pro zobrazení je potřeba zapnutý JavaScript a prohlížeč s podporou WebGL.</p>
+    </noscript>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

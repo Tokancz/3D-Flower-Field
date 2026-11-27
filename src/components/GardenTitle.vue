@@ -14,7 +14,7 @@ watch(
   (visible) => {
     if (!visible || !title.value || animation) return // animation → jen jednou
 
-    // Rozdělí "THE OASIS" na <span> pro každé písmeno → každé jde animovat zvlášť
+    // Rozdělí nadpis na <span> pro každé písmeno → každé jde animovat zvlášť
     const { chars } = splitText(title.value, { chars: true })
     title.value.style.opacity = '1' // h1 je schovaný (CSS), teď už ho řídí písmena
 
