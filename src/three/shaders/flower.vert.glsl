@@ -6,6 +6,10 @@ uniform float uFlowerHeight;  // výška kytky (2), abychom věděli, kde je vr�
 uniform vec3 uMouse;          // bod na kopci pod kurzorem
 uniform float uMouseRadius;   // jak daleko od kurzoru kytky uhýbají
 uniform float uMouseStrength; // 0 = myš mimo, 1 = myš na kopci (plynule)
+uniform float uWindStrength;  // jak moc se kývá (v metrech)
+uniform float uWindSpeed;     // jak rychle se kývá
+uniform float uPushAmount;    // jak moc se ohnou pryč od myši
+uniform float uShakeAmount;   // jak moc se u myši třesou
 
 void main() {
   vUv = uv; // pošli UV dál do fragment shaderu
@@ -28,13 +32,12 @@ void main() {
   bend = bend * bend; // ohyb jako prut
 
   // Dvě vlny s jinou rychlostí a směrem → pohyb není jen sem a tam
-  float windX = sin(uTime * 1.0 + flowerOrigin.x * 0.5);
-  float windZ = sin(uTime * 0.7 + flowerOrigin.z * 0.4);
+  float windTime = uTime * uWindSpeed;
+  float windX = sin(windTime * 1.0 + flowerOrigin.x * 0.5);
+  float windZ = sin(windTime * 0.7 + flowerOrigin.z * 0.4);
 
-  float strength = 0.1; // jak moc se kývá (v metrech)
-
-  worldPosition.x += windX * strength * bend;
-  worldPosition.z += windZ * strength * bend;
+  worldPosition.x += windX * uWindStrength * bend;
+  worldPosition.z += windZ * uWindStrength * bend;
 
     // ── Myš ──
 
@@ -52,10 +55,7 @@ void main() {
   // Pozice kytky v sinu → každá se třese v jiné fázi, ne všechny naráz.
   float shake = sin(uTime * 25.0 + flowerOrigin.x * 3.0 + flowerOrigin.z * 2.0);
 
-  float pushAmount = 0.6;  // jak moc se ohnou pryč
-  float shakeAmount = 0.5; // jak moc se třesou
-
-  worldPosition.xz += pushDir * push * bend * uMouseStrength * (pushAmount + shake * shakeAmount);
+  worldPosition.xz += pushDir * push * bend * uMouseStrength * (uPushAmount + shake * uShakeAmount);
 
   // Ze světa do kamery a pak na obrazovku
   vec4 viewPosition = viewMatrix * worldPosition;

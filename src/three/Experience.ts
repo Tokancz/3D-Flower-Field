@@ -3,6 +3,7 @@ import CameraControls from 'camera-controls'
 import { Hill } from './world/Hill'
 import { FlowerField } from './world/FlowerField'
 import Stats from 'stats.js'
+import GUI from 'lil-gui'
 
 CameraControls.install({ THREE })
 
@@ -15,6 +16,8 @@ export class Experience {
     private resizeObserver: ResizeObserver
     private keys = new Set<string>()
     private stats = new Stats()
+    // Debug panel: jen při vývoji (npm run dev). V buildu pro web zmizí.
+    private gui: GUI | null = import.meta.env.DEV ? new GUI({ title: 'Debug' }) : null
     private flowerField: FlowerField
     private hill: Hill
     private raycaster = new THREE.Raycaster()
@@ -56,6 +59,13 @@ export class Experience {
         //FlowerAtlas
         this.flowerField = new FlowerField(15000, fog)
         this.scene.add(this.flowerField.group)
+
+        // Každý objekt si do GUI přidá vlastní složku
+        if (this.gui) {
+            this.flowerField.setupGui(this.gui)
+            this.gui.add(fog, 'near', 0, 100, 1).name('mlha od')
+            this.gui.add(fog, 'far', 0, 150, 1).name('mlha do')
+        }
 
         // Resize – sledujeme kontejner, ne okno
         this.resizeObserver = new ResizeObserver(this.resize)
@@ -137,6 +147,7 @@ export class Experience {
         window.removeEventListener('keyup', this.onKeyUp)
         this.controls.dispose()
         this.stats.dom.remove()
+        this.gui?.destroy()
         this.renderer.domElement.removeEventListener('pointermove', this.onPointerMove)
         this.renderer.domElement.removeEventListener('pointerleave', this.onPointerLeave)
 
