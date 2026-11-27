@@ -33,7 +33,7 @@ onBeforeUnmount(() => animation?.revert())
 </script>
 
 <template>
-  <h1 ref="title">THE OASIS</h1>
+  <h1 ref="title">FLOWER OASIS</h1>
 </template>
 
 <style scoped>
@@ -43,8 +43,8 @@ h1 {
   left: 50%;
   transform: translateX(-50%);
   font-family: 'MonumentValley', sans-serif;
-  font-size: 4rem;
-  color: #333;
+  font-size: 5rem;
+  color: #202020;
   text-align: center;
   margin-top: 2rem;
   user-select: none;

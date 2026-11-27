@@ -44,13 +44,13 @@ export class Dust {
             depthWrite: false, // průhledné tečky nemají "zakrývat" ostatní tečky za sebou
             uniforms: {
                 uTime: { value: 0 },
-                uSize: { value: 60 },
+                uSize: { value: 120 },
                 uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
                 uSpeed: { value: 0.25 },
                 uBottom: { value: bottom },
                 uHeight: { value: height },
                 uColor: { value: new THREE.Color('#55B0FF') },
-                uOpacity: { value: 0.6 },
+                uOpacity: { value: 0.8 },
                 uFade: { value: 1 },
                 uFogNear: { value: fog.near },
                 uFogFar: { value: fog.far },
