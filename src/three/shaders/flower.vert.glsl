@@ -3,6 +3,9 @@ varying float vFogDepth;
 varying vec3 vPetalColor;   // nahoru
 uniform float uTime;          // čas v sekundách (posílá JS každý snímek)
 uniform float uFlowerHeight;  // výška kytky (2), abychom věděli, kde je vršek
+uniform float uGrow;          // intro: 0 = nic nevyrostlo, 1 = všechno vyrostlé
+uniform float uGrowSpread;    // jak moc je růst rozložený od středu k okraji
+uniform float uGrowRadius;    // poloměr kopce (pro přepočet vzdálenosti na 0–1)
 uniform float uWindStrength;  // jak moc se kývá (v metrech)
 uniform float uWindSpeed;     // jak rychle se kývá
 
@@ -20,21 +23,37 @@ void main() {
   vUv = uv; // pošli UV dál do fragment shaderu
   vPetalColor = instanceColor; // někam do main()
 
-  // Pozice vrcholu ve světě:
-  // position       = vrchol v rámci jedné kytky
-  // instanceMatrix = kde stojí TAHLE kytka (to, co jsi nastavil přes setMatrixAt)
-  // modelMatrix    = kde stojí celý InstancedMesh
-  vec4 worldPosition = modelMatrix * instanceMatrix * vec4(position, 1.0);
-
-    // ── Vítr ──
-
   // Kde stojí tahle kytka? Poslední sloupec instanceMatrix = posun (pozice).
   // Bereme pozici kytky, ne vrcholu – aby se celá kytka hýbala v jedné fázi.
   vec3 flowerOrigin = (modelMatrix * instanceMatrix[3]).xyz;
 
+  // "Náhodné" číslo 0–1 podle pozice kytky (hash) → každá kytka trochu jiná
+  float flowerRandom = fract(sin(dot(flowerOrigin.xz, vec2(12.9898, 78.233))) * 43758.5453);
+
+    // ── Intro: vyrůstání ──
+
+  // uGrow jede 0 → 1 (animuje Anime.js). Každá kytka ale vyroste jindy:
+  // vršek kopce první, okraj poslední → vlna růstu od středu ven.
+  float distFromCenter = length(flowerOrigin.xz) / uGrowRadius + flowerRandom * 0.15;
+  float grow = clamp(uGrow * (1.0 + uGrowSpread) - distFromCenter * uGrowSpread, 0.0, 1.0);
+  // "Back out" easing: kytka trochu přeroste a pak se usadí → pružný, živý dojem
+  float g1 = grow - 1.0;
+  grow = 1.0 + 2.70158 * g1 * g1 * g1 + 1.70158 * g1 * g1;
+
+  // Zmenšit kytku k její patě (pata je y = 0, takže roste ze země)
+  vec3 grownPosition = position * grow;
+
+  // Pozice vrcholu ve světě:
+  // position       = vrchol v rámci jedné kytky
+  // instanceMatrix = kde stojí TAHLE kytka (to, co jsi nastavil přes setMatrixAt)
+  // modelMatrix    = kde stojí celý InstancedMesh
+  vec4 worldPosition = modelMatrix * instanceMatrix * vec4(grownPosition, 1.0);
+
+    // ── Vítr ──
+
   // 0 u paty, 1 nahoře (position je vrchol v rámci jedné kytky, pata je y = 0)
   float bend = position.y / uFlowerHeight;
-  bend = bend * bend; // ohyb jako prut
+  bend = bend * bend * grow; // ohyb jako prut (× grow: nevyrostlá kytka se nekývá)
 
   // Dvě vlny s jinou rychlostí a směrem → pohyb není jen sem a tam
   float windTime = uTime * uWindSpeed;
@@ -50,8 +69,7 @@ void main() {
   // Každý bod si pamatuje, KDY tam byla a KAM a JAK RYCHLE jela.
   // Kytka u stopy se ohne ve směru pohybu a pak dokmitá jako pružina.
 
-  // "Náhodné" číslo 0–1 podle pozice kytky (hash) → každá kytka kmitá trochu jinak
-  float flowerRandom = fract(sin(dot(flowerOrigin.xz, vec2(12.9898, 78.233))) * 43758.5453);
+  // Každá kytka kmitá trochu jinou frekvencí (flowerRandom spočítaný nahoře)
   float freq = uWaveFreq * (0.8 + 0.4 * flowerRandom);
 
   vec2 wave = vec2(0.0);

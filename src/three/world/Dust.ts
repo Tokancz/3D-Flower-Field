@@ -51,6 +51,7 @@ export class Dust {
                 uHeight: { value: height },
                 uColor: { value: new THREE.Color('#55B0FF') },
                 uOpacity: { value: 0.6 },
+                uFade: { value: 1 },
                 uFogNear: { value: fog.near },
                 uFogFar: { value: fog.far },
             },
@@ -59,6 +60,14 @@ export class Dust {
         this.points = new THREE.Points(geometry, this.material)
         // Tečky se hýbou v shaderu → Three.js o tom neví a mohl by je chybně "odříznout"
         this.points.frustumCulled = false
+    }
+
+    // Pro Anime.js: animate(dust, { fade: 1 }) – stejný trik jako growth u kytek
+    get fade() {
+        return this.material.uniforms.uFade!.value
+    }
+    set fade(value: number) {
+        this.material.uniforms.uFade!.value = value
     }
 
     update(elapsedTime: number) {

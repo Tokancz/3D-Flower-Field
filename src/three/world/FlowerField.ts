@@ -75,15 +75,16 @@ export class FlowerField {
         typeBlend: 0.15,    // jak moc se druhy na hranici promíchají
     }
 
-    constructor(count: number, private fog: THREE.Fog) {
+    constructor(count: number, private fog: THREE.Fog, loadingManager?: THREE.LoadingManager) {
         this.settings.count = count
         const flowerSize = this.flowerSize
         this.blooms = new Float32Array(count * 3)
 
-        const textureLoader = new THREE.TextureLoader()
+        // Manager od Experience → ten pozná, kdy je VŠECHNO načtené, a spustí intro
+        const textureLoader = new THREE.TextureLoader(loadingManager)
 
-        const flowerTexture = textureLoader.load('/textures/flowers/Chamomile_1K_albedo.png')
-        const flowerAlpha = textureLoader.load('/textures/flowers/Chamomile_1K_alpha.png')
+        const flowerTexture = textureLoader.load(import.meta.env.BASE_URL + 'textures/flowers/Chamomile_1K_albedo.png')
+        const flowerAlpha = textureLoader.load(import.meta.env.BASE_URL + 'textures/flowers/Chamomile_1K_alpha.png')
 
         flowerTexture.colorSpace = THREE.SRGBColorSpace
 
@@ -112,6 +113,10 @@ export class FlowerField {
                 // Dřív napevno v shaderu → teď uniformy, ať je GUI může měnit
                 uWindStrength: { value: 0.1 },
                 uWindSpeed: { value: 1.0 },
+                // Intro: Anime.js animuje uGrow 0 → 1 (přes `growth` níže)
+                uGrow: { value: 1 },
+                uGrowSpread: { value: 1.5 },
+                uGrowRadius: { value: HILL_RADIUS },
             },
             // defines = konstanty vložené do shaderu jako `#define TRAIL_SIZE 16`.
             // Délka pole a cyklu v GLSL musí být známá předem, uniform na to nestačí.
@@ -282,6 +287,15 @@ export class FlowerField {
         // Detailní složky zavřené, ať GUI nezabírá půl obrazovky
         size.close()
         color.close()
+    }
+
+    // Getter + setter = "vlastnost", která ve skutečnosti zapisuje do uniformy.
+    // Anime.js umí animovat jakoukoli číselnou vlastnost objektu → animate(flowerField, { growth: 1 })
+    get growth() {
+        return this.material.uniforms.uGrow!.value
+    }
+    set growth(value: number) {
+        this.material.uniforms.uGrow!.value = value
     }
 
     // Najde náhodný květ poblíž bodu `near` (pro včelky). Výsledek zapíše do `target`.

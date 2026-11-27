@@ -1,0 +1,47 @@
+# Při každém pushi do main: sestavit web a nahrát ho na GitHub Pages.
+# Průběh uvidíš na GitHubu v záložce "Actions".
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # tlačítko "Run workflow" pro ruční spuštění
+
+# Oprávnění, která akce potřebuje k nahrání na Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Když pushneš 2× rychle po sobě, starší nasazení se zruší
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci          # instalace přesně podle package-lock.json
+      - run: npm run build   # type-check + build do složky dist/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

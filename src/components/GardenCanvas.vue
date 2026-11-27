@@ -2,10 +2,15 @@
 import { onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
 import { Experience } from '@/three/Experience'
 
+// Události, které komponenta posílá rodiči ("data dolů přes props, zprávy nahoru přes emit")
+const emit = defineEmits<{ title: [] }>()
+
 const container = useTemplateRef<HTMLDivElement>('container')
 let experience: Experience | null = null
 onMounted(() => {
-  experience = new Experience(container.value!)
+  experience = new Experience(container.value!, {
+    onTitle: () => emit('title'), // 3D svět → Vue
+  })
 })
 
 onBeforeUnmount(() => {

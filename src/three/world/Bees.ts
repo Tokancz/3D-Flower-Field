@@ -233,15 +233,16 @@ export class Bees {
     private bees: Bee[] = []
     private baseMaterial: THREE.SpriteMaterial
 
-    constructor(count: number, flowers: FlowerField, background: THREE.Color) {
-        // LoadingManager zavolá onLoad, až jsou načtené VŠECHNY textury.
-        // Do té doby včelky schované (kopie textur by jinak neměly co nahrát a Three.js by varoval).
+    private shown = false
+
+    constructor(count: number, flowers: FlowerField, background: THREE.Color, loadingManager?: THREE.LoadingManager) {
+        // Schované, dokud je intro nezavolá přes show().
+        // (Textury načítá společný manager z Experience → intro začne, až je všechno načtené.)
         this.group.visible = false
-        const manager = new THREE.LoadingManager(() => (this.group.visible = true))
-        const loader = new THREE.TextureLoader(manager)
-        const map = loader.load('/textures/bee/Bee_500px_Albedo.png')
+        const loader = new THREE.TextureLoader(loadingManager)
+        const map = loader.load(import.meta.env.BASE_URL + 'textures/bee/Bee_500px_Albedo.png')
         map.colorSpace = THREE.SRGBColorSpace
-        const alphaMap = loader.load('/textures/bee/Bee_500px_Alpha.png')
+        const alphaMap = loader.load(import.meta.env.BASE_URL + 'textures/bee/Bee_500px_Alpha.png')
 
         this.baseMaterial = new THREE.SpriteMaterial({
             map,
@@ -251,14 +252,23 @@ export class Bees {
 
         const start = new THREE.Vector3()
         for (let i = 0; i < count; i++) {
-            start.set(THREE.MathUtils.randFloatSpread(16), 2, THREE.MathUtils.randFloatSpread(16))
+            // Start vysoko za okrajem kopce → po show() včelky přiletí "zvenku"
+            const angle = Math.random() * Math.PI * 2
+            start.set(Math.cos(angle) * 22, THREE.MathUtils.randFloat(5, 9), Math.sin(angle) * 22)
             const bee = new Bee(this.baseMaterial, flowers, start, background)
             this.bees.push(bee)
             this.group.add(bee.sprite, bee.trail)
         }
     }
 
+    // Zavolá intro → včelky se objeví a začnou létat
+    show() {
+        this.shown = true
+        this.group.visible = true
+    }
+
     update(time: number, delta: number, camera: THREE.Camera) {
+        if (!this.shown) return // schované včelky nelétají → po show() startují zvenku
         // Ochrana: po přepnutí záložky může být delta obří → včelky by "teleportovaly"
         const dt = Math.min(delta, 1 / 20)
         for (const bee of this.bees) bee.update(time, dt, camera)

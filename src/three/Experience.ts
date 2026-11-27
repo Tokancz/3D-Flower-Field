@@ -6,6 +6,8 @@ import { Bees } from './world/Bees'
 import { Dust } from './world/Dust'
 import Stats from 'stats.js'
 import GUI from 'lil-gui'
+import type { Timeline } from 'animejs'
+import { createIntro } from './Intro'
 
 CameraControls.install({ THREE })
 
@@ -17,7 +19,8 @@ export class Experience {
     private clock = new THREE.Clock()
     private resizeObserver: ResizeObserver
     private keys = new Set<string>()
-    private stats = new Stats()
+    // FPS měřák: stejně jako GUI jen při vývoji
+    private stats: Stats | null = import.meta.env.DEV ? new Stats() : null
     // Debug panel: jen při vývoji (npm run dev). V buildu pro web zmizí.
     private gui: GUI | null = import.meta.env.DEV ? new GUI({ title: 'Debug' }) : null
     private flowerField: FlowerField
@@ -29,13 +32,21 @@ export class Experience {
     private pointerInside = false
     private pointerTravel = 0
 
-    constructor(private container: HTMLElement) {
+    private intro: Timeline
+    private introStarted = false // textury načtené, intro běží
+    private introPlaying = true
+
+    constructor(
+        private container: HTMLElement,
+        // Callbacky ven z 3D světa → Vue (třeba „teď ukaž nadpis“)
+        private options: { onTitle?: () => void } = {},
+    ) {
         // Renderer
         this.renderer = new THREE.WebGLRenderer({ antialias: true })
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
         container.appendChild(this.renderer.domElement)
 
-        document.body.appendChild(this.stats.dom)
+        if (this.stats) document.body.appendChild(this.stats.dom)
 
         // Pozadí + mlha stejné barvy → vzdálené věci se rozplynou
         const bg = new THREE.Color('#EEFAFF')
@@ -61,11 +72,17 @@ export class Experience {
         this.scene.add(this.hill.mesh)
 
         //FlowerAtlas
-        this.flowerField = new FlowerField(15000, fog)
+        // Jeden LoadingManager pro všechny textury → onLoad = všechno načtené → spustit intro
+        const loadingManager = new THREE.LoadingManager(() => {
+            this.introStarted = true
+            this.intro.play()
+        })
+
+        this.flowerField = new FlowerField(15000, fog, loadingManager)
         this.scene.add(this.flowerField.group)
 
         // Včelky potřebují kytky (kam létat) a pozadí (do čeho bledne trail)
-        this.bees = new Bees(6, this.flowerField, bg)
+        this.bees = new Bees(6, this.flowerField, bg, loadingManager)
         this.scene.add(this.bees.group)
 
         this.dust = new Dust(600, fog)
@@ -80,6 +97,23 @@ export class Experience {
             this.gui.add(fog, 'far', 0, 150, 1).name('mlha do')
         }
 
+        // Intro: během něj kamera neposlouchá uživatele
+        this.controls.enabled = false
+        this.intro = createIntro({
+            controls: this.controls,
+            flowerField: this.flowerField,
+            dust: this.dust,
+            bees: this.bees,
+            onTitle: () => this.options.onTitle?.(),
+            onComplete: () => {
+                // Při přeskočení (complete) radši znovu: show() i nadpis jsou bezpečné volat 2×
+                this.bees.show()
+                this.options.onTitle?.()
+                this.introPlaying = false
+                this.controls.enabled = true
+            },
+        })
+
         // Resize – sledujeme kontejner, ne okno
         this.resizeObserver = new ResizeObserver(this.resize)
         this.resizeObserver.observe(container)
@@ -90,6 +124,7 @@ export class Experience {
         window.addEventListener('keyup', this.onKeyUp)
         this.renderer.domElement.addEventListener('pointermove', this.onPointerMove)
         this.renderer.domElement.addEventListener('pointerleave', this.onPointerLeave)
+        this.renderer.domElement.addEventListener('pointerdown', this.skipIntro)
 
         // Render loop
         this.renderer.setAnimationLoop(this.tick)
@@ -102,7 +137,16 @@ export class Experience {
         this.renderer.setSize(w, h)
     }
 
-    private onKeyDown = (e: KeyboardEvent) => this.keys.add(e.code)
+    private onKeyDown = (e: KeyboardEvent) => {
+        this.skipIntro()
+        this.keys.add(e.code)
+    }
+
+    // Klik nebo klávesa během intra → přeskočit na konec (netrpěliví uživatelé 🙂)
+    private skipIntro = () => {
+        // Jen když už běží – během načítání není co přeskakovat
+        if (this.introStarted && this.introPlaying) this.intro.complete()
+    }
     private onKeyUp = (e: KeyboardEvent) => this.keys.delete(e.code)
     private onPointerMove = (e: PointerEvent) => {
         // Převod pixelů na souřadnice, které chce Raycaster:
@@ -124,11 +168,11 @@ export class Experience {
     }
 
     private tick = () => {
-        this.stats.begin()
+        this.stats?.begin()
         const delta = this.clock.getDelta()
 
-        // WASD
-        const speed = 10 * delta
+        // WASD (ne během intra – kameru teď řídí Anime.js)
+        const speed = this.introPlaying ? 0 : 10 * delta
         if (this.keys.has('KeyW')) this.controls.forward(speed, true)
         if (this.keys.has('KeyS')) this.controls.forward(-speed, true)
         if (this.keys.has('KeyA')) this.controls.truck(-speed, 0, true)
@@ -152,7 +196,7 @@ export class Experience {
         this.bees.update(this.clock.elapsedTime, delta, this.camera)
         this.dust.update(this.clock.elapsedTime)
         this.renderer.render(this.scene, this.camera)
-        this.stats.end()
+        this.stats?.end()
     }
 
     dispose() {
@@ -161,12 +205,14 @@ export class Experience {
         window.removeEventListener('keydown', this.onKeyDown)
         window.removeEventListener('keyup', this.onKeyUp)
         this.controls.dispose()
-        this.stats.dom.remove()
+        this.stats?.dom.remove()
         this.gui?.destroy()
         this.bees.dispose()
         this.dust.dispose()
         this.renderer.domElement.removeEventListener('pointermove', this.onPointerMove)
         this.renderer.domElement.removeEventListener('pointerleave', this.onPointerLeave)
+        this.renderer.domElement.removeEventListener('pointerdown', this.skipIntro)
+        this.intro.cancel()
 
         // Uvolnit paměť GPU
         this.scene.traverse((obj) => {
