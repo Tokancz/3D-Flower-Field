@@ -82,7 +82,7 @@ export class Experience {
         this.scene.add(this.flowerField.group)
 
         // Včelky potřebují kytky (kam létat) a pozadí (do čeho bledne trail)
-        this.bees = new Bees(6, this.flowerField, bg, loadingManager)
+        this.bees = new Bees(10, this.flowerField, bg, loadingManager)
         this.scene.add(this.bees.group)
 
         this.dust = new Dust(600, fog)
