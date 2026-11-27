@@ -50,20 +50,16 @@ export function createCrossGeometry(rect: AtlasRect, height: number, count = 2) 
   return mergeGeometries(parts)!
 }
 
-export function createFlowerGeometry(height: number, count = 2) {
+// bloomRect = který květ z atlasu použít → každý druh kytky si zavolá s jiným
+export function createFlowerGeometry(height: number, bloomRect: AtlasRect, count = 2) {
     const bloomHeight = height * 0.2
 
     const stem = createCrossGeometry(ATLAS.stem, height, count)
-    const bloom = createPartGeometry(ATLAS.bloom, bloomHeight)
+    const bloom = createPartGeometry(bloomRect, bloomHeight)
 
-    const parts: THREE.BufferGeometry[] = []
-
-    parts.push(stem)
-    
-    bloom.translate(0, -bloomHeight / 2, 0) 
+    bloom.translate(0, -bloomHeight / 2, 0)
     bloom.rotateX(-Math.PI / 3)
-    bloom.translate(0, height * 0.96, 0)
-    parts.push(bloom)
+    bloom.translate(0, height * 0.97, 0)
 
-    return mergeGeometries(parts)!
+    return mergeGeometries([stem, bloom])!
 }

@@ -1,11 +1,16 @@
 * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 html, body, #app {
   margin: 0;
   height: 100%;
   background: #eefaff;
+}
+
+@font-face {
+  font-family: 'MonumentValley';
+  src: url('/fonts/Monument_Valley_1.2-Regular.otf') format('opentype');
 }

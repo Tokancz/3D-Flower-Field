@@ -11,8 +11,8 @@ export class Hill {
     const geometry = new THREE.SphereGeometry(1, 96, 48)
     geometry.scale(HILL_RADIUS, HILL_HEIGHT, HILL_RADIUS) // zploštit do kopečku
 
-    const top = new THREE.Color('#50aa47')
-    const bottom = new THREE.Color('#74ad6e')
+    const top = new THREE.Color('#D6EEFA')
+    const bottom = new THREE.Color('#EEFAFF')
 
     const pos = geometry.getAttribute('position')
     const colors = new Float32Array(pos.count * 3)

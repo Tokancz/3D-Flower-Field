@@ -54,8 +54,8 @@ export class Experience {
         this.scene.add(this.hill.mesh)
 
         //FlowerAtlas
-        this.flowerField = new FlowerField(10000, fog)
-        this.scene.add(this.flowerField.mesh)
+        this.flowerField = new FlowerField(15000, fog)
+        this.scene.add(this.flowerField.group)
 
         // Resize – sledujeme kontejner, ne okno
         this.resizeObserver = new ResizeObserver(this.resize)
