@@ -16,6 +16,12 @@ const settings = {
     hoverMin: 1.5,       // jak dlouho opyluje (s)
     hoverMax: 4.0,
     flightDistance: 5,   // jak daleko létá na další kytku
+    // Polekání
+    scareRadius: 2.5,    // jak blízko od květu musí myš projet
+    scareSpeed: 0.2,     // jak rychle musí myš jet (0–1, 1 = "plná síla" vlny)
+    fleeDistance: 12,    // jak daleko uletí
+    panicBoost: 2.5,     // kolikrát rychleji letí v panice
+    panicDuration: 2.5,  // za jak dlouho (s) panika opadne
     // Trail
     trailLife: 2.5,      // jak dlouho (s) trail zůstává
     trailSpacing: 0.08,  // vzdálenost mezi body trailu
@@ -32,6 +38,7 @@ const _side = new THREE.Vector3()
 const _camRight = new THREE.Vector3()
 const _camUp = new THREE.Vector3()
 const _up = new THREE.Vector3(0, 1, 0)
+const _mouse = new THREE.Vector2()
 const _trailColor = new THREE.Color()
 const _mixed = new THREE.Color()
 
@@ -51,6 +58,7 @@ class Bee {
     private phase = Math.random() * 100    // každá včelka kličkuje jinak
     private facing = -1                    // -1 = kouká doleva (jako obrázek), +1 = doprava
     private tilt = 0
+    private panic = 0                      // 1 = právě se lekla, postupně klesá k 0
 
     // Trail = historie pozic. "distance" = ujetá vzdálenost v tom bodě (tachometr)
     private trailPoints: TrailPoint[] = []
@@ -85,7 +93,8 @@ class Bee {
         this.trail.frustumCulled = false // obal se mění každou chvíli, nevyplatí se počítat
     }
 
-    update(time: number, delta: number, camera: THREE.Camera) {
+    // mouse = kde myš hrabe (x, z), brush = jak silně (0 = vůbec)
+    update(time: number, delta: number, camera: THREE.Camera, mouse: THREE.Vector2, brush: number) {
         const S = settings
         const smooth = (rate: number) => 1 - Math.exp(-delta * rate)
 
@@ -94,14 +103,28 @@ class Bee {
         const distance = _toTarget.length()
         _toTarget.y += S.hoverHeight + S.cruiseLift * THREE.MathUtils.smoothstep(distance, 0.5, 3)
 
+        // ── Polekání ──
+        // Jen u květu (opyluje nebo přistává) a jen když už není v panice
+        const atFlower = this.state === 'hover' || distance < 1.5
+        if (atFlower && this.panic < 0.3 && brush > S.scareSpeed) {
+            const mouseToFlower = Math.hypot(this.target.x - mouse.x, this.target.z - mouse.y)
+            if (mouseToFlower < S.scareRadius) this.scare(mouse)
+        }
+        // Panika plynule opadá (za panicDuration sekund je skoro na nule)
+        this.panic *= Math.exp((-delta * 3) / S.panicDuration)
+
         if (this.state === 'fly') {
+            // V panice rychleji a víc kličkuje
+            const speed = S.speed * (1 + this.panic * (S.panicBoost - 1))
+            const wobble = S.wobble * (1 + this.panic * 2)
+
             // Řízení (steering): "chci letět tímhle směrem" a rychlost se k tomu plynule stáčí
             const arrive = Math.min(1, distance / 1.5) // u květu zpomalit
-            _desired.copy(_toTarget).normalize().multiplyScalar(S.speed * arrive)
+            _desired.copy(_toTarget).normalize().multiplyScalar(speed * arrive)
 
             // Kličkování: přičíst sinus kolmo na směr letu
             _side.crossVectors(_desired, _up).normalize()
-            _desired.addScaledVector(_side, Math.sin(time * 3 + this.phase) * S.wobble * arrive)
+            _desired.addScaledVector(_side, Math.sin(time * (3 + this.panic * 5) + this.phase) * wobble * arrive)
 
             this.velocity.lerp(_desired, smooth(S.steering))
 
@@ -162,6 +185,26 @@ class Bee {
         this.material.rotation = this.tilt
 
         this.updateTrail(time)
+    }
+
+    private scare(mouse: THREE.Vector2) {
+        const S = settings
+        this.panic = 1
+        this.state = 'fly'
+
+        // Nový cíl daleko, pokud možno na opačné straně než kurzor
+        this.flowers.getBloomNear(this.position, this.target, S.fleeDistance, mouse)
+
+        // "Kopanec": okamžitě vyletět nahoru a pryč od kurzoru.
+        // Přičítáme přímo k rychlosti → steering ho pak plynule stočí k novému cíli.
+        let awayX = this.position.x - mouse.x
+        let awayZ = this.position.z - mouse.y
+        const length = Math.hypot(awayX, awayZ) || 1 // || 1 = ochrana před dělením nulou
+        awayX /= length
+        awayZ /= length
+        this.velocity.x += awayX * 4
+        this.velocity.z += awayZ * 4
+        this.velocity.y += 3
     }
 
     private updateTrail(time: number) {
@@ -235,7 +278,7 @@ export class Bees {
 
     private shown = false
 
-    constructor(count: number, flowers: FlowerField, background: THREE.Color, loadingManager?: THREE.LoadingManager) {
+    constructor(count: number, private flowers: FlowerField, background: THREE.Color, loadingManager?: THREE.LoadingManager) {
         // Schované, dokud je intro nezavolá přes show().
         // (Textury načítá společný manager z Experience → intro začne, až je všechno načtené.)
         this.group.visible = false
@@ -271,7 +314,9 @@ export class Bees {
         if (!this.shown) return // schované včelky nelétají → po show() startují zvenku
         // Ochrana: po přepnutí záložky může být delta obří → včelky by "teleportovaly"
         const dt = Math.min(delta, 1 / 20)
-        for (const bee of this.bees) bee.update(time, dt, camera)
+        // Kde myš hrabe – zjistit JEDNOU za snímek, ne pro každou včelku zvlášť
+        const brush = this.flowers.getMouseBrush(_mouse)
+        for (const bee of this.bees) bee.update(time, dt, camera, _mouse, brush)
     }
 
     setupGui(gui: GUI) {
@@ -284,6 +329,13 @@ export class Bees {
         folder.add(settings, 'flightDistance', 1, 15, 0.5).name('vzdálenost letu')
         folder.add(settings, 'hoverMin', 0, 5, 0.1).name('opylování min (s)')
         folder.add(settings, 'hoverMax', 0, 10, 0.1).name('opylování max (s)')
+
+        const scare = folder.addFolder('Polekání')
+        scare.add(settings, 'scareRadius', 0.5, 6, 0.1).name('dosah myši')
+        scare.add(settings, 'scareSpeed', 0, 1, 0.01).name('citlivost (min. rychlost)')
+        scare.add(settings, 'fleeDistance', 3, 25, 0.5).name('jak daleko uletí')
+        scare.add(settings, 'panicBoost', 1, 5, 0.1).name('zrychlení v panice')
+        scare.add(settings, 'panicDuration', 0.5, 6, 0.1).name('délka paniky (s)')
 
         const trail = folder.addFolder('Trail')
         trail.add(settings, 'trailLife', 0.2, 8, 0.1).name('délka (s)')

@@ -300,19 +300,34 @@ export class FlowerField {
 
     // Najde náhodný květ poblíž bodu `near` (pro včelky). Výsledek zapíše do `target`.
     // Zkusí pár náhodných kytek a vezme tu, která je nejblíž ideální vzdálenosti.
-    getBloomNear(near: THREE.Vector3, target: THREE.Vector3, idealDistance = 5) {
+    // `avoid` (volitelné) = místo, kterému se vyhnout (kurzor) → kytky blízko něj dostanou horší skóre
+    getBloomNear(near: THREE.Vector3, target: THREE.Vector3, idealDistance = 5, avoid?: THREE.Vector2) {
         let bestScore = Infinity
         for (let attempt = 0; attempt < 12; attempt++) {
             const i = Math.floor(Math.random() * this.bloomCount) * 3
             const dx = this.blooms[i]! - near.x
             const dz = this.blooms[i + 2]! - near.z
-            const score = Math.abs(Math.hypot(dx, dz) - idealDistance)
+            let score = Math.abs(Math.hypot(dx, dz) - idealDistance)
+            if (avoid) {
+                // Čím blíž ke kurzoru, tím větší "trest" → včelka uletí na opačnou stranu
+                const toAvoid = Math.hypot(this.blooms[i]! - avoid.x, this.blooms[i + 2]! - avoid.y)
+                score += Math.max(0, idealDistance - toAvoid) * 2
+            }
             if (score < bestScore) {
                 bestScore = score
                 target.set(this.blooms[i]!, this.blooms[i + 1]!, this.blooms[i + 2]!)
             }
         }
         return target
+    }
+
+    // Kde a jak silně myš právě "hrabe" v kytkách (pro včelky).
+    // Zapíše pozici (x, z) do `out` a vrátí sílu 0–1 (0 = myš stojí / není nad kopcem).
+    getMouseBrush(out: THREE.Vector2) {
+        const m = this.mouse
+        if (!m.hasPoint || !m.moving) return 0
+        out.copy(m.point)
+        return Math.min(m.velocity.length() / m.referenceSpeed, 1)
     }
 
     // Experience sem každý snímek pošle bod na kopci (nebo null, když myš není nad kopcem)
