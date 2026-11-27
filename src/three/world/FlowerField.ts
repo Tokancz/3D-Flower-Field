@@ -57,7 +57,10 @@ export class FlowerField {
         sizeRampMax: 0.7,
         clusterMin: 0.6,    // nejmenší/největší kytka v clusteru
         clusterMax: 1.2,
-        edgeStart: 0.45,    // kde od kraje se začnou zmenšovat (0–1)
+        edgeStart: 0.45,    // kde od kraje začnou řídnout a zmenšovat se (0–1)
+        edgeRadius: 1.0,    // jak daleko se sází (1 = až k okraji kopce)
+        edgeNoise: 0.15,    // jak moc je okraj rozvlněný (0 = dokonalý kruh)
+        edgeNoiseFreq: 0.2, // velikost "zátok" na okraji
         edgeMinScale: 0.7,  // jak malé jsou úplně na kraji
         jitter: 0.3,        // ± náhoda velikosti
         // Barva (HSL odstín 0–1: 0.5 tyrkysová, 0.6 modrá, 0.75 fialová)
@@ -149,16 +152,27 @@ export class FlowerField {
         for (const mesh of this.meshes) mesh.count = 0 // vyprázdnit, budeme přičítat
 
         for (let i = 0; i < S.count; i++) {
-            const angle = random() * Math.PI * 2
+            // ── 1) Pozice + řídnutí ke kraji (rejection sampling) ──
+            // Vyber náhodné místo. Čím blíž kraji, tím větší šance, že ho zahodíme a zkusíme jiné.
+            // → kytky u kraje postupně řídnou, místo aby končily ostrou čarou.
+            let x = 0
+            let z = 0
+            let edgeFalloff = 0
+            for (let attempt = 0; attempt < 30; attempt++) {
+                const angle = random() * Math.PI * 2
+                const r = HILL_RADIUS * S.edgeRadius * Math.sqrt(random())
+                x = r * Math.cos(angle)
+                z = r * Math.sin(angle)
 
-            const r = HILL_RADIUS * 0.9 * Math.sqrt(random())
-            const x = r * Math.cos(angle)
-            const z = r * Math.sin(angle)
+                // Spherical gradient: 1 uprostřed → 0 na okraji kopce
+                const center = 1 - r / HILL_RADIUS
+                // Noise posune hranici dovnitř/ven → okraj není dokonalý kruh
+                const wobble = noise.noise(x * S.edgeNoiseFreq + 300, z * S.edgeNoiseFreq + 300) * S.edgeNoise
+                // "ColorRamp": uvnitř 1 (vždy zůstane), u kraje → 0 (skoro vždy zahodit)
+                edgeFalloff = smoothstep(center + wobble, 0.0, S.edgeStart)
 
-            // ── 1) Spherical gradient: 1 uprostřed → 0 na okraji kopce ──
-            const center = 1 - r / HILL_RADIUS
-            // "ColorRamp": střed zůstane plný (1), zmenšovat začne až u okraje
-            const edgeFalloff = smoothstep(center, 0.0, S.edgeStart)
+                if (random() < edgeFalloff) break // přijato
+            }
 
             // ── 2) Noise pro clustery velikosti ──
             const rawSize = noise.noise(x * S.sizeFreq, z * S.sizeFreq) * 0.5 + 0.5
@@ -249,6 +263,9 @@ export class FlowerField {
         size.add(S, 'clusterMax', 0.1, 2, 0.01).name('cluster max').onFinishChange(rescatter)
         size.add(S, 'edgeStart', 0.01, 1, 0.01).name('okraj: začátek').onFinishChange(rescatter)
         size.add(S, 'edgeMinScale', 0, 1, 0.01).name('okraj: velikost').onFinishChange(rescatter)
+        size.add(S, 'edgeRadius', 0.5, 1, 0.01).name('okraj: dosah').onFinishChange(rescatter)
+        size.add(S, 'edgeNoise', 0, 0.5, 0.01).name('okraj: rozvlnění').onFinishChange(rescatter)
+        size.add(S, 'edgeNoiseFreq', 0.02, 0.6, 0.01).name('okraj: frekvence').onFinishChange(rescatter)
         size.add(S, 'jitter', 0, 0.5, 0.01).name('náhoda').onFinishChange(rescatter)
 
         const color = folder.addFolder('Barva')
