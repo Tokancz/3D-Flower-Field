@@ -7,7 +7,7 @@ import type { FlowerField } from './FlowerField'
 
 // Sdílené nastavení všech včelek (GUI ho mění, včelky si ho čtou každý snímek)
 const settings = {
-    size: 0.35,          // velikost spritu (kytka je vysoká 2)
+    size: 0.5,          // velikost spritu (kytka je vysoká 2)
     speed: 2.2,          // rychlost letu (jednotky/s)
     steering: 2.5,       // jak ostře zatáčí (víc = míň plynulé oblouky)
     wobble: 0.8,         // kličkování do stran během letu

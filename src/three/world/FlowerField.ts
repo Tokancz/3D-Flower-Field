@@ -18,13 +18,29 @@ function createRandom(seed: number) {
     }
 }
 
+// Kolik bodů si pamatuje stopa myši. Víc = delší vlna, ale shader dělá víc práce
+// (každý vrchol každé kytky projde všechny body).
+const TRAIL_SIZE = 16
+const _rawVelocity = new THREE.Vector2()
+
 export class FlowerField {
     // Group = "složka" ve scéně, Experience přidá jen ji a nemusí vědět, kolik druhů máme
     group = new THREE.Group()
     private meshes: THREE.InstancedMesh[]
     private material: THREE.ShaderMaterial
-    private mouseTarget = new THREE.Vector3()
-    private mouseTargetStrength = 0
+    // Stav myši pro stopu. Vector2 = pozice na zemi (x, z) – výška nás nezajímá.
+    private mouse = {
+        point: new THREE.Vector2(),
+        hasPoint: false,
+        moving: false,
+        prev: new THREE.Vector2(),
+        hasPrev: false,
+        velocity: new THREE.Vector2(),
+        lastSample: new THREE.Vector2(Infinity, Infinity),
+        next: 0,             // kam v kruhovém bufferu zapsat další bod
+        spacing: 0.35,       // vzdálenost mezi body stopy
+        referenceSpeed: 10,  // při jaké rychlosti (jednotky/s) je vlna nejsilnější
+    }
     private flowerSize = 2
     // Pozice všech květů [x, y, z, x, y, z, ...] → podle nich létají včelky.
     // Float32Array místo pole Vector3: 15 000 objektů by zbytečně zabíralo paměť.
@@ -36,21 +52,21 @@ export class FlowerField {
         count: 15000,
         seed: 1,
         // Velikost
-        sizeFreq: 0.18,     // frekvence noise (menší = větší clustery)
+        sizeFreq: 0.12,     // frekvence noise (menší = větší clustery)
         sizeRampMin: 0.2,   // "ColorRamp" úchyty
         sizeRampMax: 0.7,
-        clusterMin: 0.8,    // nejmenší/největší kytka v clusteru
+        clusterMin: 0.6,    // nejmenší/největší kytka v clusteru
         clusterMax: 1.2,
         edgeStart: 0.45,    // kde od kraje se začnou zmenšovat (0–1)
         edgeMinScale: 0.7,  // jak malé jsou úplně na kraji
-        jitter: 0.1,        // ± náhoda velikosti
+        jitter: 0.3,        // ± náhoda velikosti
         // Barva (HSL odstín 0–1: 0.5 tyrkysová, 0.6 modrá, 0.75 fialová)
-        colorFreq: 0.12,
-        hueMin: 0.58,
-        hueMax: 0.63,
+        colorFreq: 0.01,
+        hueMin: 0.6,
+        hueMax: 0.7,
         lightMin: 0.5,
         lightMax: 0.62,
-        saturation: 0.8,
+        saturation: 0.9,
         // Druh kytky
         typeFreq: 0.1,
         typeBlend: 0.15,    // jak moc se druhy na hranici promíchají
@@ -81,15 +97,22 @@ export class FlowerField {
                 uTime: { value: 0 },
                 uFlowerHeight: { value: flowerSize },
                 uPetalColor: { value: new THREE.Color('#4dacff') },
-                uMouse: { value: new THREE.Vector3() },
-                uMouseRadius: { value: 4.0 },
-                uMouseStrength: { value: 0 },
+                // Stopa myši: pole bodů. Čas -1000 = "dávno" → zatím nic nedělají
+                uTrail: { value: Array.from({ length: TRAIL_SIZE }, () => new THREE.Vector4()) },
+                uTrailTime: { value: new Array(TRAIL_SIZE).fill(-1000) },
+                uMouseRadius: { value: 2. },
+                uWaveStrength: { value: 0.7 },
+                uWaveFreq: { value: 4.5 },
+                uWaveDamping: { value: 2.2 },
+                uWaveDelay: { value: 0.12 },
+                uWaveSpread: { value: 0.4 },
                 // Dřív napevno v shaderu → teď uniformy, ať je GUI může měnit
                 uWindStrength: { value: 0.1 },
                 uWindSpeed: { value: 1.0 },
-                uPushAmount: { value: 0.6 },
-                uShakeAmount: { value: 0.5 },
             },
+            // defines = konstanty vložené do shaderu jako `#define TRAIL_SIZE 16`.
+            // Délka pole a cyklu v GLSL musí být známá předem, uniform na to nestačí.
+            defines: { TRAIL_SIZE },
         })
 
         // ── Druhy kytek: stejný stonek, jiný květ ──
@@ -199,9 +222,13 @@ export class FlowerField {
         const wind = folder.addFolder('Vítr & myš')
         wind.add(u.uWindStrength!, 'value', 0, 0.5, 0.01).name('síla větru')
         wind.add(u.uWindSpeed!, 'value', 0, 3, 0.01).name('rychlost větru')
-        wind.add(u.uMouseRadius!, 'value', 0.5, 10, 0.1).name('poloměr myši')
-        wind.add(u.uPushAmount!, 'value', 0, 2, 0.01).name('odhrnutí')
-        wind.add(u.uShakeAmount!, 'value', 0, 2, 0.01).name('třes')
+        wind.add(u.uMouseRadius!, 'value', 0.5, 8, 0.1).name('myš: poloměr')
+        wind.add(u.uWaveStrength!, 'value', 0, 2, 0.01).name('vlna: síla')
+        wind.add(u.uWaveFreq!, 'value', 1, 20, 0.1).name('vlna: frekvence')
+        wind.add(u.uWaveDamping!, 'value', 0.3, 8, 0.1).name('vlna: útlum')
+        wind.add(u.uWaveDelay!, 'value', 0, 0.5, 0.01).name('vlna: šíření')
+        wind.add(u.uWaveSpread!, 'value', 0, 1.5, 0.01).name('vlna: do stran')
+        wind.add(this.mouse, 'referenceSpeed', 1, 30, 0.5).name('myš: plná síla při')
 
         // ── Rozmístění: počítá se na CPU → po puštění posuvníku přegenerovat ──
         const S = this.settings
@@ -257,15 +284,12 @@ export class FlowerField {
         return target
     }
 
-    // Experience sem pošle bod na kopci, nebo null, když myš není nad kopcem
-    setMouse(point: THREE.Vector3 | null, speed: number) {
-        if (point) {
-            this.mouseTarget.copy(point)
-            // Rychlost → síla 0–1. Při ~1 šířce obrazovky za sekundu je síla plná.
-            this.mouseTargetStrength = Math.min(speed * 1.0, 1)
-        } else {
-            this.mouseTargetStrength = 0
-        }
+    // Experience sem každý snímek pošle bod na kopci (nebo null, když myš není nad kopcem)
+    // a rychlost kurzoru (0 = kurzor stojí, nebo se hýbe kamerou s drženým tlačítkem)
+    setMouse(point: THREE.Vector3 | null, screenSpeed: number) {
+        this.mouse.hasPoint = point !== null
+        if (point) this.mouse.point.set(point.x, point.z)
+        this.mouse.moving = screenSpeed > 0
     }
 
     update(elapsedTime: number, delta: number) {
@@ -275,15 +299,44 @@ export class FlowerField {
         u.uFogNear!.value = this.fog.near
         u.uFogFar!.value = this.fog.far
 
-        // Plynulé dotahování (chill): každý snímek ujdi kus cesty k cíli
-        const smooth = 1 - Math.exp(-delta * 8)
+        this.updateMouseTrail(elapsedTime, delta)
+    }
 
-        // Pozice myši v shaderu "dojíždí" za skutečnou → kytky se nerozhrnou trhaně
-        u.uMouse!.value.lerp(this.mouseTarget, smooth)
+    private updateMouseTrail(time: number, delta: number) {
+        const m = this.mouse
+        const u = this.material.uniforms
 
-        // Najíždí rychle (reaguje hned), dojíždí pomalu (kytky se chvíli doklepávají)
-        const current = u.uMouseStrength!.value
-        const rate = this.mouseTargetStrength > current ? 12 : 2
-        u.uMouseStrength!.value += (this.mouseTargetStrength - current) * (1 - Math.exp(-delta * rate))
+        if (!m.hasPoint) {
+            m.hasPrev = false
+            m.velocity.set(0, 0)
+            return
+        }
+
+        // ── Rychlost myši VE SVĚTĚ (jednotky/s) = o kolik se posunula / za jak dlouho ──
+        if (m.hasPrev && delta > 0) {
+            _rawVelocity.subVectors(m.point, m.prev).divideScalar(delta)
+            // Vyhladit: jednotlivé snímky jsou "zubaté", průměr přes pár snímků ne
+            m.velocity.lerp(_rawVelocity, 1 - Math.exp(-delta * 15))
+        }
+        m.prev.copy(m.point)
+        m.hasPrev = true
+
+        // ── Nový bod stopy, jen když se myš pohnula dost daleko od posledního ──
+        if (!m.moving || m.point.distanceTo(m.lastSample) < m.spacing) return
+        m.lastSample.copy(m.point)
+
+        // Síla 0–1 podle rychlosti: pomalý pohyb = jemné zavlnění, rychlý = pořádné
+        const speed = m.velocity.length()
+        const strength = Math.min(speed / m.referenceSpeed, 1)
+        // Směr (délka 1) × síla → do shaderu jako zw
+        const dirX = speed > 0 ? (m.velocity.x / speed) * strength : 0
+        const dirZ = speed > 0 ? (m.velocity.y / speed) * strength : 0
+
+        // Kruhový buffer: přepisujeme nejstarší bod (index jede 0, 1, …, 15, 0, 1, …)
+        const trail = u.uTrail!.value as THREE.Vector4[]
+        const times = u.uTrailTime!.value as number[]
+        trail[m.next]!.set(m.point.x, m.point.y, dirX, dirZ)
+        times[m.next] = time
+        m.next = (m.next + 1) % TRAIL_SIZE
     }
 }

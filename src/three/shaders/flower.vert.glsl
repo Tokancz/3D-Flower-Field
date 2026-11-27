@@ -3,13 +3,18 @@ varying float vFogDepth;
 varying vec3 vPetalColor;   // nahoru
 uniform float uTime;          // čas v sekundách (posílá JS každý snímek)
 uniform float uFlowerHeight;  // výška kytky (2), abychom věděli, kde je vršek
-uniform vec3 uMouse;          // bod na kopci pod kurzorem
-uniform float uMouseRadius;   // jak daleko od kurzoru kytky uhýbají
-uniform float uMouseStrength; // 0 = myš mimo, 1 = myš na kopci (plynule)
 uniform float uWindStrength;  // jak moc se kývá (v metrech)
 uniform float uWindSpeed;     // jak rychle se kývá
-uniform float uPushAmount;    // jak moc se ohnou pryč od myši
-uniform float uShakeAmount;   // jak moc se u myši třesou
+
+// Stopa myši. TRAIL_SIZE doplní TypeScript přes `defines` (musí být konstanta kvůli cyklu)
+uniform vec4 uTrail[TRAIL_SIZE];
+uniform float uTrailTime[TRAIL_SIZE];
+uniform float uMouseRadius;   // jak daleko od stopy kytky reagují
+uniform float uWaveStrength;  // jak moc se ohnou (v metrech)
+uniform float uWaveFreq;      // jak rychle kmitají
+uniform float uWaveDamping;   // jak rychle se uklidní
+uniform float uWaveDelay;     // zpoždění podle vzdálenosti (šíření vlny)
+uniform float uWaveSpread;    // kolik do stran (0 = jen ve směru myši)
 
 void main() {
   vUv = uv; // pošli UV dál do fragment shaderu
@@ -41,21 +46,46 @@ void main() {
 
     // ── Myš ──
 
-  // Vektor od myši ke kytce, jen vodorovně (výšku ignorujeme)
-  vec2 toFlower = flowerOrigin.xz - uMouse.xz;
-  float dist = length(toFlower);
+  // Myš za sebou nechává stopu: TRAIL_SIZE bodů, kudy projela.
+  // Každý bod si pamatuje, KDY tam byla a KAM a JAK RYCHLE jela.
+  // Kytka u stopy se ohne ve směru pohybu a pak dokmitá jako pružina.
 
-  // 1 přímo pod myší → 0 na okraji poloměru a dál
-  float push = 1.0 - smoothstep(0.0, uMouseRadius, dist);
+  // "Náhodné" číslo 0–1 podle pozice kytky (hash) → každá kytka kmitá trochu jinak
+  float flowerRandom = fract(sin(dot(flowerOrigin.xz, vec2(12.9898, 78.233))) * 43758.5453);
+  float freq = uWaveFreq * (0.8 + 0.4 * flowerRandom);
 
-  // Směr "pryč od myši" (délky 1). max() chrání před dělením nulou
-  vec2 pushDir = toFlower / max(dist, 0.0001);
+  vec2 wave = vec2(0.0);
 
-    // Rychlé chvění: vysoká frekvence (uTime * 25) → třes, ne houpání.
-  // Pozice kytky v sinu → každá se třese v jiné fázi, ne všechny naráz.
-  float shake = sin(uTime * 25.0 + flowerOrigin.x * 3.0 + flowerOrigin.z * 2.0);
+  for (int i = 0; i < TRAIL_SIZE; i++) {
+    vec4 point = uTrail[i];            // xy = kde byla myš (svět xz), zw = směr × síla
+    float age = uTime - uTrailTime[i]; // jak dávno tam byla (s)
+    if (age > 4.0) continue;          // starý bod už nic nedělá → přeskočit (šetří výkon)
 
-  worldPosition.xz += pushDir * push * bend * uMouseStrength * (uPushAmount + shake * uShakeAmount);
+    vec2 toFlower = flowerOrigin.xz - point.xy;
+    float dist = length(toFlower);
+    float influence = 1.0 - smoothstep(0.0, uMouseRadius, dist);
+    if (influence <= 0.0) continue;
+
+    // Vzdálenější kytky reagují o kousek později → vlna se šíří do stran
+    float t = max(age - dist * uWaveDelay, 0.0);
+
+    // Tlumený kmit: sin = houpání tam a zpět, exp = postupně utichá.
+    // sin(0) = 0 → kytka se ohýbá plynule, ne skokem.
+    float spring = sin(t * freq) * exp(-t * uWaveDamping);
+
+    // Směr: hlavně ve směru pohybu myši + trochu do stran (rozhrnutí jako v trávě)
+    float speed = length(point.zw);
+    vec2 outward = toFlower / max(dist, 0.0001);
+    vec2 dir = point.zw + outward * speed * uWaveSpread;
+
+    wave += dir * influence * spring;
+  }
+
+  // Víc bodů stopy u sebe by se sčítalo → omezit, ať se kytka "nezlomí"
+  float waveLength = length(wave);
+  if (waveLength > 1.0) wave /= waveLength;
+
+  worldPosition.xz += wave * uWaveStrength * bend;
 
   // Ze světa do kamery a pak na obrazovku
   vec4 viewPosition = viewMatrix * worldPosition;
