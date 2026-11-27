@@ -25,6 +25,11 @@ export class FlowerField {
     private material: THREE.ShaderMaterial
     private mouseTarget = new THREE.Vector3()
     private mouseTargetStrength = 0
+    private flowerSize = 2
+    // Pozice všech květů [x, y, z, x, y, z, ...] → podle nich létají včelky.
+    // Float32Array místo pole Vector3: 15 000 objektů by zbytečně zabíralo paměť.
+    private blooms = new Float32Array(0)
+    private bloomCount = 0
 
     // ── Všechna "magická čísla" rozmístění na jednom místě → GUI je umí měnit ──
     settings = {
@@ -53,7 +58,8 @@ export class FlowerField {
 
     constructor(count: number, private fog: THREE.Fog) {
         this.settings.count = count
-        const flowerSize = 2
+        const flowerSize = this.flowerSize
+        this.blooms = new Float32Array(count * 3)
 
         const textureLoader = new THREE.TextureLoader()
 
@@ -149,6 +155,11 @@ export class FlowerField {
 
             matrix.compose(position, quaternion, scale)
 
+            // Zapamatovat, kde je květ (vršek stonku × velikost kytky)
+            this.blooms[i * 3] = x
+            this.blooms[i * 3 + 1] = position.y + this.flowerSize * 0.97 * s
+            this.blooms[i * 3 + 2] = z
+
             // ── 4) Třetí noise: který druh kytky tu roste? ──
             const typeNoise = noise.noise(x * S.typeFreq + 200, z * S.typeFreq + 200) * 0.5 + 0.5
             const blend = (random() * 2 - 1) * S.typeBlend
@@ -168,6 +179,8 @@ export class FlowerField {
             )
             mesh.setColorAt(slot, petalColor)
         }
+
+        this.bloomCount = S.count
 
         for (const mesh of this.meshes) {
             mesh.instanceMatrix.needsUpdate = true
@@ -225,6 +238,23 @@ export class FlowerField {
         // Detailní složky zavřené, ať GUI nezabírá půl obrazovky
         size.close()
         color.close()
+    }
+
+    // Najde náhodný květ poblíž bodu `near` (pro včelky). Výsledek zapíše do `target`.
+    // Zkusí pár náhodných kytek a vezme tu, která je nejblíž ideální vzdálenosti.
+    getBloomNear(near: THREE.Vector3, target: THREE.Vector3, idealDistance = 5) {
+        let bestScore = Infinity
+        for (let attempt = 0; attempt < 12; attempt++) {
+            const i = Math.floor(Math.random() * this.bloomCount) * 3
+            const dx = this.blooms[i]! - near.x
+            const dz = this.blooms[i + 2]! - near.z
+            const score = Math.abs(Math.hypot(dx, dz) - idealDistance)
+            if (score < bestScore) {
+                bestScore = score
+                target.set(this.blooms[i]!, this.blooms[i + 1]!, this.blooms[i + 2]!)
+            }
+        }
+        return target
     }
 
     // Experience sem pošle bod na kopci, nebo null, když myš není nad kopcem

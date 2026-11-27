@@ -2,6 +2,8 @@ import * as THREE from 'three'
 import CameraControls from 'camera-controls'
 import { Hill } from './world/Hill'
 import { FlowerField } from './world/FlowerField'
+import { Bees } from './world/Bees'
+import { Dust } from './world/Dust'
 import Stats from 'stats.js'
 import GUI from 'lil-gui'
 
@@ -19,6 +21,8 @@ export class Experience {
     // Debug panel: jen při vývoji (npm run dev). V buildu pro web zmizí.
     private gui: GUI | null = import.meta.env.DEV ? new GUI({ title: 'Debug' }) : null
     private flowerField: FlowerField
+    private bees: Bees
+    private dust: Dust
     private hill: Hill
     private raycaster = new THREE.Raycaster()
     private pointer = new THREE.Vector2()
@@ -60,9 +64,18 @@ export class Experience {
         this.flowerField = new FlowerField(15000, fog)
         this.scene.add(this.flowerField.group)
 
+        // Včelky potřebují kytky (kam létat) a pozadí (do čeho bledne trail)
+        this.bees = new Bees(6, this.flowerField, bg)
+        this.scene.add(this.bees.group)
+
+        this.dust = new Dust(600, fog)
+        this.scene.add(this.dust.points)
+
         // Každý objekt si do GUI přidá vlastní složku
         if (this.gui) {
             this.flowerField.setupGui(this.gui)
+            this.bees.setupGui(this.gui)
+            this.dust.setupGui(this.gui)
             this.gui.add(fog, 'near', 0, 100, 1).name('mlha od')
             this.gui.add(fog, 'far', 0, 150, 1).name('mlha do')
         }
@@ -136,6 +149,8 @@ export class Experience {
         this.flowerField.setMouse(hit, pointerSpeed)
 
         this.flowerField.update(this.clock.elapsedTime, delta)
+        this.bees.update(this.clock.elapsedTime, delta, this.camera)
+        this.dust.update(this.clock.elapsedTime)
         this.renderer.render(this.scene, this.camera)
         this.stats.end()
     }
@@ -148,6 +163,8 @@ export class Experience {
         this.controls.dispose()
         this.stats.dom.remove()
         this.gui?.destroy()
+        this.bees.dispose()
+        this.dust.dispose()
         this.renderer.domElement.removeEventListener('pointermove', this.onPointerMove)
         this.renderer.domElement.removeEventListener('pointerleave', this.onPointerLeave)
 
